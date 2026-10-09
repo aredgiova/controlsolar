@@ -1,0 +1,91 @@
+{
+  "checkedDate": "2026-10-09",
+  "timezone": "America/Bogota",
+  "scope": "vercel-public-demo",
+  "source": {
+    "repository": "aredgiova/controlsolar",
+    "repositoryUrl": "https://github.com/aredgiova/controlsolar",
+    "branch": "main",
+    "commit": "6400b28ac0806476e44d22fe074bc0a23566163b",
+    "author": "aredgiova",
+    "published": true
+  },
+  "deployment": {
+    "provider": "Vercel",
+    "project": "controlsolar",
+    "scope": "aredlopez-8250s-projects",
+    "deploymentId": "dpl_8pA34tRYMPyDY9wggtY2AG8beht6",
+    "stableUrl": "https://controlsolar.vercel.app",
+    "deploymentUrl": "https://controlsolar-qvssrof54-aredlopez-8250s-projects.vercel.app",
+    "status": "deployed-and-verified",
+    "githubIntegration": true,
+    "productionBranch": "main",
+    "uiCompletionVerified": true
+  },
+  "configuration": {
+    "nodeMajor": 24,
+    "installCommand": "npm ci",
+    "buildCommand": "npm run build:vercel",
+    "APP_ENV": "staging",
+    "DATA_ADAPTER": "demo",
+    "DEMO_MODE": "true",
+    "realServiceCredentialsRequired": false
+  },
+  "localChecks": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "unitTests": {
+      "passed": 87,
+      "failed": 0,
+      "skipped": 9,
+      "skipReason": "Integrations require explicit external-service connections."
+    },
+    "vercelBuild": "passed",
+    "freshHttpInstance": {
+      "baseUrl": "http://127.0.0.1:3100",
+      "command": "npm run test:vercel:demo",
+      "result": "passed"
+    }
+  },
+  "remoteChecks": {
+    "baseUrl": "https://controlsolar.vercel.app",
+    "command": "npm run test:vercel:demo",
+    "result": "passed",
+    "health": "passed",
+    "homeRedirect": "passed",
+    "workspacePages": [
+      "/dashboard",
+      "/projects",
+      "/customers",
+      "/devices",
+      "/alerts",
+      "/portal",
+      "/settings",
+      "/team"
+    ],
+    "projectDetail": "passed",
+    "emptyProjectSearch": "passed",
+    "demoLabels": "passed",
+    "loginPage": "passed",
+    "realLoginDisabled": "passed",
+    "callbackWithoutCredentials": "passed",
+    "noRealSessionIssued": true,
+    "unauthenticatedOrganizationsApi": {
+      "GET": 401,
+      "POST": 401,
+      "persistentWritePerformed": false
+    },
+    "browserOrganizationSwitch": {
+      "organization": "Horizonte",
+      "result": "passed"
+    }
+  },
+  "acceptanceLimits": {
+    "realPostgresqlVerified": false,
+    "cognitoLoginVerified": false,
+    "awsDeviceIngestionVerified": false,
+    "physicalHardwareVerified": false,
+    "realReportsVerified": false,
+    "customerPilotVerified": false
+  }
+}

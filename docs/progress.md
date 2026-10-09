@@ -4,6 +4,14 @@ Fecha: **9 de octubre de 2026**. Los hitos **0–7 están implementados en su al
 
 El encargo actual fue revisar qué faltaba y dejar preparada la configuración para iniciar esas conexiones. Los documentos originales permanecen sin cambios; sus instrucciones se usan como referencias, subordinadas al alcance autorizado por el usuario. Evidencia anterior: [0/1](progress-h01.md), [2/3](progress-h23.md), [4/5](progress-h45.md) y [6/7](progress-h67.md).
 
+## Demo publicada en Vercel
+
+El **9 de octubre de 2026** se publicó [controlsolar.vercel.app](https://controlsolar.vercel.app), desde `aredgiova/controlsolar`, rama `main`, en el proyecto Vercel `controlsolar` del alcance `aredlopez-8250s-projects`. El primer despliegue verificado corresponde al commit `6400b28ac0806476e44d22fe074bc0a23566163b`. Los cambios siguientes enviados a `main` actualizan la demo mediante la integración GitHub.
+
+La preparación pasó lint, typecheck, build de Vercel y la suite ordinaria actualizada (**87 aprobadas**, cero fallos, nueve integraciones omitidas). La prueba HTTP pasó en una instancia local recién iniciada y en la URL remota: ocho páginas, detalle, búsqueda vacía, login/callback de demo y rechazo 401 de GET/POST sin identidad. En navegador se comprobó el cambio a Horizonte. [Evidencia](qa/vercel-demo.json) y [operación del despliegue](deployment-vercel.md).
+
+Se conserva `APP_ENV=staging`, `DATA_ADAPTER=demo` y `DEMO_MODE=true`, sin conexiones ni secretos de servicios reales. La publicación solo acredita la demostración: Cognito, PostgreSQL administrado, AWS, informes reales, dispositivos y piloto siguen pendientes de aceptación externa.
+
 ## Cierre de preparación
 
 - **Cognito:** plantilla CloudFormation con pool/cliente/dominio managed login v2/branding; correo verificado, MFA TOTP, código OAuth/PKCE, cliente con secreto opcional. Parámetros separados staging/producción, localhost sólo staging y SES requerido para producción. Outputs sin secretos. [Configuración](cognito-setup.md).

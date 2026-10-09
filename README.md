@@ -17,9 +17,9 @@ Abrir [localhost:3000](http://localhost:3000). La demostración contiene dos emp
 
 ## Demostración en Vercel
 
-La preparación para Vercel usa Node 24.x, `npm ci` y `npm run build:vercel`. En el proyecto de demo configurar `APP_ENV=staging`, `DATA_ADAPTER=demo` y `DEMO_MODE=true` para los scopes Preview y Production de Vercel; no necesita PostgreSQL, Cognito ni secretos. El scope Production de Vercel es independiente de `APP_ENV`: la demo conserva `staging` aunque tenga una URL estable.
+La demo está publicada en **[controlsolar.vercel.app](https://controlsolar.vercel.app)** y se verificó el 9 de octubre de 2026. El proyecto Vercel `controlsolar` sigue la rama `main` de [aredgiova/controlsolar](https://github.com/aredgiova/controlsolar); los siguientes cambios enviados a esa rama actualizan la demo. La verificación remota comprobó navegación, datos ficticios y bloqueo de autenticación y gestión persistente. [Evidencia](docs/qa/vercel-demo.json).
 
-Seguir [la guía de despliegue en Vercel](docs/deployment-vercel.md) para importar `aredgiova/controlsolar` en el alcance Vercel `aredlopez-8250s-projects`, vinculado al usuario GitHub `aredgiova`, revisar qué archivos se publican y verificar el despliegue con `DEMO_BASE_URL` y `npm run test:vercel:demo`. La configuración local preparada no implica que ya exista un despliegue remoto. Usar un proyecto separado al incorporar servicios y datos reales.
+Vercel usa Node 24.x, `npm ci` y `npm run build:vercel`, con `APP_ENV=staging`, `DATA_ADAPTER=demo` y `DEMO_MODE=true` para Preview y Production. El scope Production de Vercel es independiente de `APP_ENV`: la demo conserva `staging`. No necesita PostgreSQL, Cognito ni secretos. Seguir [la guía de despliegue en Vercel](docs/deployment-vercel.md) para revisar configuración y verificar cambios con `DEMO_BASE_URL` y `npm run test:vercel:demo`. Usar un proyecto separado al incorporar servicios y datos reales; su aceptación sigue pendiente.
 
 ## Gestión persistente
 
