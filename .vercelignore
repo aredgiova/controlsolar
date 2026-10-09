@@ -1,0 +1,37 @@
+# Allow only application source and build inputs.
+/*
+!/package.json
+!/package-lock.json
+!/next.config.ts
+!/next-env.d.ts
+!/tsconfig.json
+!/postcss.config.mjs
+!/prisma.config.ts
+!/vercel.json
+!/.nvmrc
+!/src
+!/prisma
+!/scripts
+
+# Generated locally; Prisma regenerates its client on every build.
+/src/generated/
+
+# Only the demo build guard is required by the Vercel build.
+/scripts/*
+!/scripts/check-vercel-demo.mjs
+
+# Exclude private files even if accidentally placed in source directories.
+**/.env*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.crt
+**/*.cer
+**/*.log
+**/*.tsbuildinfo
+**/.aws/
+**/.codex/
+**/.agents/
+**/node_modules/
+**/.work/

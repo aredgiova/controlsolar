@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { randomUUID, randomBytes } from "node:crypto";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { setTimeout } from "node:timers/promises";
+import pg from "pg";
+import { PDFDocument } from "pdf-lib";
+import { getDatabase } from "../src/lib/db";
+import { closeWorkerDatabase, withWorkerTransaction } from "../src/lib/worker-db";
+import { createOrganization, updateMembership } from "../src/modules/organizations/service";
+import { createCustomer } from "../src/modules/customers/service";
+import { assignParticipant, createProject, removeParticipant, updateProject } from "../src/modules/projects/persistent";
+import { requestReport, listReports, createDownloadLease, downloadReport, downloadTokenHash } from "../src/modules/reports/service";
+import { LocalReportStorage } from "../src/modules/reports/storage";
+import { createReportWorker } from "../src/modules/reports/worker";
+import { reportWorkerStore } from "../src/modules/reports/store";
+import { DomainError } from "../src/modules/organizations/access";
+import { localDateAt } from "../src/modules/telemetry/energy";
+const enabled = Boolean(process.env.TEST_RUNTIME_DATABASE_URL && process.env.TEST_ADMIN_DATABASE_URL && process.env.TEST_WORKER_DATABASE_URL);
+test("reports persist a frozen private PDF/snapshot and recheck session scope, replay, expiry and revoked access on download", { skip: !enabled, timeout: 120000 }, async () => {
+  process.env.APP_ENV = "development"; process.env.DATA_ADAPTER = "postgres"; process.env.DEMO_MODE = "false";
+  process.env.DATABASE_URL = process.env.TEST_RUNTIME_DATABASE_URL; process.env.WORKER_DATABASE_URL = process.env.TEST_WORKER_DATABASE_URL;
+  const admin = new pg.Pool({ connectionString: process.env.TEST_ADMIN_DATABASE_URL, max: 2, options: "-c timezone=UTC" });
+  const tag = randomUUID().slice(0, 8), owner = { userId: randomUUID(), email: `report-owner-${tag}@example.test` }, customerActor = { userId: randomUUID(), email: `report-customer-${tag}@example.test` }, outsider = { userId: randomUUID(), email: `report-other-${tag}@example.test` };
+  const directory = await mkdtemp(join(tmpdir(), "solar-report-db-")); const storage = new LocalReportStorage(directory, "development"); let organizationId = ""; const membershipId = randomUUID();
+  try {
+    for (const actor of [owner, customerActor, outsider]) await admin.query("INSERT INTO users(id,cognito_subject,email,email_verified,name,updated_at) VALUES($1,$2,$3,true,'Report fixture',now())", [actor.userId, `test:${actor.userId}`, actor.email]);
+    const org = await createOrganization(owner, { name: `Informes ${tag}`, slug: `reports-${tag}`, timezone: "America/Bogota" }); organizationId = org.id;
+    const customer = await createCustomer(owner, org.id, { name: "Cliente informe" });
+    const project = await createProject(owner, org.id, { name: "Piloto de informe", customerId: customer.id, location: "Yopal", capacityKwp: 6 });
+    await admin.query("INSERT INTO memberships(id,organization_id,user_id,role,status,updated_at) VALUES($1,$2,$3,'customer','active',now())", [membershipId, org.id, customerActor.userId]);
+    await assignParticipant(owner, org.id, project.id, { userId: customerActor.userId, role: "customer" });
+    const date = localDateAt(new Date(), project.timezone), input = { startDate: date, endDate: date, idempotencyKey: randomUUID() };
+    const [first, same] = await Promise.all([requestReport(owner, org.id, project.id, input), requestReport(owner, org.id, project.id, input)]); assert.equal(first.id, same.id);
+    await assert.rejects(requestReport(owner, org.id, project.id, { ...input, startDate: "2020-01-01", endDate: "2020-01-01" }), (error: unknown) => error instanceof DomainError && error.status === 409);
+    await assert.rejects(listReports(outsider, org.id, project.id));
+    await updateProject(owner, org.id, project.id, { timezone: "UTC" });
+    const run = createReportWorker(reportWorkerStore, storage); assert.equal(await run(`test-report-${tag}`), "completed");
+    const metadata = (await admin.query("SELECT * FROM report_jobs WHERE id=$1", [first.id])).rows[0]; assert.equal(metadata.status, "completed"); assert.equal(metadata.timezone, "America/Bogota"); assert.equal(metadata.snapshot_json.timezone, "America/Bogota"); assert.equal(metadata.snapshot_json.energy.generationKwh.value, null);
+    const document = await PDFDocument.load(await readFile(join(directory, ...metadata.artifact_key.split("/")))); assert.ok(document.getPageCount() >= 1);
+    assert.equal((await listReports(customerActor, org.id, project.id)).items.length, 0); await assert.rejects(createDownloadLease(customerActor, org.id, first.id));
+    const lease = await createDownloadLease(owner, org.id, first.id);
+    const deliveries = await Promise.allSettled([downloadReport(owner, org.id, first.id, lease.token, storage), downloadReport(owner, org.id, first.id, lease.token, storage)]);
+    assert.equal(deliveries.filter((result) => result.status === "fulfilled").length, 1); assert.equal(deliveries.filter((result) => result.status === "rejected").length, 1);
+    const customerJob = await requestReport(customerActor, org.id, project.id, { ...input, idempotencyKey: randomUUID() }); assert.equal(await run(`test-report-${tag}`), "completed");
+    const deniedLease = (error: unknown) => error instanceof DomainError && error.status === 404 && error.code === "INVALID_DOWNLOAD_LEASE";
+    const customerLease = await createDownloadLease(customerActor, org.id, customerJob.id); await assert.rejects(downloadReport(owner, org.id, customerJob.id, customerLease.token, storage), deniedLease);
+    assert.equal((await downloadReport(customerActor, org.id, customerJob.id, customerLease.token, storage)).contentType, "application/pdf");
+    const revokedLease = await createDownloadLease(customerActor, org.id, customerJob.id); await removeParticipant(owner, org.id, project.id, customerActor.userId); await assert.rejects(downloadReport(customerActor, org.id, customerJob.id, revokedLease.token, storage), deniedLease);
+    await assignParticipant(owner, org.id, project.id, { userId: customerActor.userId, role: "customer" }); const disabledLease = await createDownloadLease(customerActor, org.id, customerJob.id); await updateMembership(owner, org.id, membershipId, { status: "disabled" }); await assert.rejects(downloadReport(customerActor, org.id, customerJob.id, disabledLease.token, storage));
+    const expired = randomBytes(32).toString("hex"); await admin.query("INSERT INTO download_leases(id,organization_id,project_id,report_job_id,user_id,token_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), org.id, project.id, first.id, owner.userId, downloadTokenHash(expired), new Date(Date.now() + 150)]); await setTimeout(250); await assert.rejects(downloadReport(owner, org.id, first.id, expired, storage), deniedLease);
+    await assert.rejects(withWorkerTransaction(async (client) => { await client.query("SELECT * FROM public.report_jobs"); }));
+    await closeWorkerDatabase(); await getDatabase().$disconnect(); assert.equal((await listReports(owner, org.id, project.id)).items.filter((job) => job.status === "completed").length, 2);
+  } finally {
+    await closeWorkerDatabase(); await getDatabase().$disconnect();
+    if (organizationId) { for (const table of ["download_leases", "report_jobs", "site_access", "projects", "customers", "audit_events", "memberships"]) await admin.query(`DELETE FROM ${table} WHERE organization_id=$1`, [organizationId]); await admin.query("DELETE FROM organizations WHERE id=$1", [organizationId]); }
+    for (const actor of [owner, customerActor, outsider]) await admin.query("DELETE FROM users WHERE id=$1", [actor.userId]); await admin.end(); await rm(directory, { recursive: true, force: true });
+  }
+});

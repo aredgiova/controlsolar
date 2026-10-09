@@ -1,0 +1,120 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Solar identity readiness. Separate staging/production stacks; review in the target commercial AWS account before execution. No users, passwords, database or application hosting are provisioned.",
+  "Parameters": {
+    "Environment": { "Type": "String", "AllowedValues": ["staging", "production"] },
+    "DeploymentPrefix": { "Type": "String", "AllowedPattern": "[a-z][a-z0-9-]{2,35}", "Description": "Unique account/region prefix. Environment is appended to resource names and Cognito domain." },
+    "AppBaseUrl": { "Type": "String", "AllowedPattern": "https://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?:\\:[0-9]{1,5})?", "MaxLength": 253, "Description": "Exact deployed HTTPS origin, lowercase host, no path, query, fragment or trailing slash." },
+    "GenerateClientSecret": { "Type": "String", "AllowedValues": ["true", "false"], "Default": "true", "Description": "Server-only confidential client by default. If false, the application still uses authorization code + PKCE." },
+    "MfaMode": { "Type": "String", "AllowedValues": ["ON", "OPTIONAL", "OFF"], "Default": "ON", "Description": "TOTP only. OPTIONAL does not automatically enroll users in managed login; ON prompts enrollment." },
+    "EnableLocalhostCallbacks": { "Type": "String", "AllowedValues": ["true", "false"], "Default": "false", "Description": "Only staging may additionally allow http://localhost:<LocalTestPort>. Deployed HTTPS callbacks remain registered." },
+    "LocalTestPort": { "Type": "Number", "MinValue": 1, "MaxValue": 65535, "Default": 3100 },
+    "SesIdentityArn": { "Type": "String", "Default": "", "AllowedPattern": "(?:|arn:aws:ses:[a-z0-9-]+:[0-9]{12}:identity/[^\\s]+)", "Description": "Verified SES email/domain identity ARN in an AWS-supported sending region. Required for production; optional in staging." },
+    "EmailFromAddress": { "Type": "String", "Default": "", "AllowedPattern": "(?:|[^\\s<>@]+@[^\\s<>@]+\\.[^\\s<>@]+)", "Description": "From address covered by SesIdentityArn. Supply both fields or neither. No display-name syntax." }
+  },
+  "Rules": {
+    "LocalCallbackOnlyInStaging": {
+      "Assertions": [{ "Assert": { "Fn::Or": [{ "Fn::Equals": [{ "Ref": "EnableLocalhostCallbacks" }, "false"] }, { "Fn::Equals": [{ "Ref": "Environment" }, "staging"] }] }, "AssertDescription": "HTTP localhost callbacks are limited to staging." }]
+    },
+    "EmailParametersTogether": {
+      "Assertions": [{ "Assert": { "Fn::Equals": [{ "Fn::Equals": [{ "Ref": "SesIdentityArn" }, ""] }, { "Fn::Equals": [{ "Ref": "EmailFromAddress" }, ""] }] }, "AssertDescription": "Set both SesIdentityArn and EmailFromAddress, or leave both empty." }]
+    },
+    "ProductionRequiresSes": {
+      "RuleCondition": { "Fn::Equals": [{ "Ref": "Environment" }, "production"] },
+      "Assertions": [{ "Assert": { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "SesIdentityArn" }, ""] }] }, "AssertDescription": "Production requires a verified SES identity and an approved sending configuration." }]
+    }
+  },
+  "Conditions": {
+    "HasClientSecret": { "Fn::Equals": [{ "Ref": "GenerateClientSecret" }, "true"] },
+    "HasSesIdentity": { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "SesIdentityArn" }, ""] }] },
+    "UsesMfa": { "Fn::Not": [{ "Fn::Equals": [{ "Ref": "MfaMode" }, "OFF"] }] },
+    "AllowsLocalhost": { "Fn::And": [{ "Fn::Equals": [{ "Ref": "Environment" }, "staging"] }, { "Fn::Equals": [{ "Ref": "EnableLocalhostCallbacks" }, "true"] }] }
+  },
+  "Resources": {
+    "UserPool": {
+      "Type": "AWS::Cognito::UserPool",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "UserPoolName": { "Fn::Sub": "${DeploymentPrefix}-${Environment}" },
+        "UserPoolTier": "ESSENTIALS",
+        "DeletionProtection": "ACTIVE",
+        "UsernameAttributes": ["email"],
+        "UsernameConfiguration": { "CaseSensitive": false },
+        "AutoVerifiedAttributes": ["email"],
+        "AdminCreateUserConfig": { "AllowAdminCreateUserOnly": false },
+        "Schema": [{ "Name": "email", "AttributeDataType": "String", "Required": true, "Mutable": true }],
+        "UserAttributeUpdateSettings": { "AttributesRequireVerificationBeforeUpdate": ["email"] },
+        "AccountRecoverySetting": { "RecoveryMechanisms": [{ "Name": "verified_email", "Priority": 1 }] },
+        "VerificationMessageTemplate": { "DefaultEmailOption": "CONFIRM_WITH_CODE" },
+        "MfaConfiguration": { "Ref": "MfaMode" },
+        "EnabledMfas": { "Fn::If": ["UsesMfa", ["SOFTWARE_TOKEN_MFA"], { "Ref": "AWS::NoValue" }] },
+        "Policies": {
+          "PasswordPolicy": { "MinimumLength": 12, "RequireLowercase": true, "RequireUppercase": true, "RequireNumbers": true, "RequireSymbols": true, "TemporaryPasswordValidityDays": 1 },
+          "SignInPolicy": { "AllowedFirstAuthFactors": ["PASSWORD"] }
+        },
+        "EmailConfiguration": {
+          "EmailSendingAccount": { "Fn::If": ["HasSesIdentity", "DEVELOPER", "COGNITO_DEFAULT"] },
+          "SourceArn": { "Fn::If": ["HasSesIdentity", { "Ref": "SesIdentityArn" }, { "Ref": "AWS::NoValue" }] },
+          "From": { "Fn::If": ["HasSesIdentity", { "Ref": "EmailFromAddress" }, { "Ref": "AWS::NoValue" }] }
+        },
+        "UserPoolTags": { "Application": "monitoreo-solar", "Environment": { "Ref": "Environment" }, "ManagedBy": "CloudFormation" }
+      }
+    },
+    "WebClient": {
+      "Type": "AWS::Cognito::UserPoolClient",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "UserPoolId": { "Ref": "UserPool" },
+        "ClientName": { "Fn::Sub": "${DeploymentPrefix}-${Environment}-web" },
+        "GenerateSecret": { "Fn::If": ["HasClientSecret", true, false] },
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "AllowedOAuthFlows": ["code"],
+        "AllowedOAuthScopes": ["openid", "email", "profile"],
+        "SupportedIdentityProviders": ["COGNITO"],
+        "CallbackURLs": [{ "Fn::Sub": "${AppBaseUrl}/auth/callback" }, { "Fn::If": ["AllowsLocalhost", { "Fn::Sub": "http://localhost:${LocalTestPort}/auth/callback" }, { "Ref": "AWS::NoValue" }] }],
+        "LogoutURLs": [{ "Fn::Sub": "${AppBaseUrl}/login" }, { "Fn::If": ["AllowsLocalhost", { "Fn::Sub": "http://localhost:${LocalTestPort}/login" }, { "Ref": "AWS::NoValue" }] }],
+        "DefaultRedirectURI": { "Fn::Sub": "${AppBaseUrl}/auth/callback" },
+        "ExplicitAuthFlows": ["ALLOW_USER_SRP_AUTH"],
+        "ReadAttributes": ["email", "email_verified", "name"],
+        "WriteAttributes": ["email", "name"],
+        "PreventUserExistenceErrors": "ENABLED",
+        "EnableTokenRevocation": true,
+        "IdTokenValidity": 60,
+        "AccessTokenValidity": 60,
+        "RefreshTokenValidity": 1,
+        "TokenValidityUnits": { "IdToken": "minutes", "AccessToken": "minutes", "RefreshToken": "days" },
+        "AuthSessionValidity": 5
+      }
+    },
+    "UserPoolDomain": {
+      "Type": "AWS::Cognito::UserPoolDomain",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": { "UserPoolId": { "Ref": "UserPool" }, "Domain": { "Fn::Sub": "${DeploymentPrefix}-${Environment}" }, "ManagedLoginVersion": 2 }
+    },
+    "ManagedLoginBranding": {
+      "Type": "AWS::Cognito::ManagedLoginBranding",
+      "DependsOn": "UserPoolDomain",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": { "UserPoolId": { "Ref": "UserPool" }, "ClientId": { "Ref": "WebClient" }, "UseCognitoProvidedValues": true }
+    }
+  },
+  "Outputs": {
+    "Environment": { "Value": { "Ref": "Environment" } },
+    "AwsAccountId": { "Value": { "Ref": "AWS::AccountId" } },
+    "AwsRegion": { "Value": { "Ref": "AWS::Region" } },
+    "UserPoolId": { "Value": { "Ref": "UserPool" } },
+    "UserPoolArn": { "Value": { "Fn::GetAtt": ["UserPool", "Arn"] } },
+    "CognitoIssuer": { "Value": { "Fn::Sub": "https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}" } },
+    "CognitoClientId": { "Value": { "Ref": "WebClient" } },
+    "CognitoDomain": { "Value": { "Fn::Sub": "https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com" } },
+    "AppBaseUrl": { "Value": { "Ref": "AppBaseUrl" } },
+    "CallbackUrl": { "Value": { "Fn::Sub": "${AppBaseUrl}/auth/callback" } },
+    "LogoutUrl": { "Value": { "Fn::Sub": "${AppBaseUrl}/login" } },
+    "LocalCallbackUrl": { "Condition": "AllowsLocalhost", "Value": { "Fn::Sub": "http://localhost:${LocalTestPort}/auth/callback" } },
+    "ClientSecretRequired": { "Value": { "Ref": "GenerateClientSecret" }, "Description": "If true, retrieve the generated client secret directly into the server's secret manager; it is deliberately not an output." }
+  }
+}

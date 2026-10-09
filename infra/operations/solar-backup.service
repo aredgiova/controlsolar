@@ -1,0 +1,18 @@
+[Unit]
+Description=Respaldo cifrado de Monitoreo Solar
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=solar-backup
+Group=solar-backup
+WorkingDirectory=/opt/solar/app
+EnvironmentFile=/etc/solar/backup.env
+ExecStart=/opt/solar/node/bin/node /opt/solar/app/scripts/backup.mjs
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/solar/backups
+TimeoutStartSec=1800

@@ -1,0 +1,742 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Solar H5 ingestion pilot. Review and validate in the target AWS account before deployment. No certificates, database or network are provisioned.",
+  "Parameters": {
+    "DeploymentPrefix": {
+      "Type": "String",
+      "Default": "solar_pilot",
+      "AllowedPattern": "[a-z][a-z0-9_]{2,35}",
+      "Description": "Unique per deployment and region."
+    },
+    "CodeBucket": {
+      "Type": "String",
+      "Description": "Existing private bucket containing the reviewed ingestion.zip in this region."
+    },
+    "CodeKey": {
+      "Type": "String",
+      "Description": "Immutable/versioned object key for ingestion.zip."
+    },
+    "IngestDatabaseSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:[a-z-]+:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+",
+      "Description": "Existing secret JSON containing INGEST_DATABASE_URL for solar_ingest with sslmode=verify-full."
+    },
+    "SecretKmsKeyArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Customer-managed KMS key ARN when the existing secret uses one; empty for AWS-managed key."
+    },
+    "VpcSubnetIds": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Existing private subnets reaching PostgreSQL and Secrets Manager via endpoint/NAT."
+    },
+    "VpcSecurityGroupIds": {
+      "Type": "List<AWS::EC2::SecurityGroup::Id>",
+      "Description": "Existing Lambda security groups permitting only required PostgreSQL and HTTPS egress."
+    }
+  },
+  "Conditions": {
+    "HasSecretKmsKey": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "SecretKmsKeyArn"
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "DeadLetterQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "QueueName": {
+          "Fn::Sub": "${DeploymentPrefix}-telemetry-dlq"
+        },
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600,
+        "RedriveAllowPolicy": {
+          "redrivePermission": "byQueue",
+          "sourceQueueArns": [
+            {
+              "Fn::Sub": "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:${DeploymentPrefix}-telemetry"
+            }
+          ]
+        }
+      }
+    },
+    "TelemetryQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "QueueName": {
+          "Fn::Sub": "${DeploymentPrefix}-telemetry"
+        },
+        "SqsManagedSseEnabled": true,
+        "MaximumMessageSize": 131072,
+        "MessageRetentionPeriod": 345600,
+        "VisibilityTimeout": 210,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "DeadLetterQueue",
+              "Arn"
+            ]
+          },
+          "maxReceiveCount": 5
+        }
+      }
+    },
+    "ErrorArchive": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "BoundedErrorRetention",
+              "Status": "Enabled",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ErrorArchivePolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "ErrorArchive"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ErrorArchive",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${ErrorArchive.Arn}/*"
+                }
+              ],
+              "Principal": "*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "IotRuleRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "iot.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:iot:${AWS::Region}:${AWS::AccountId}:rule/${DeploymentPrefix}_telemetry"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "WriteOnlyTelemetryAndRuleErrors",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "sqs:SendMessage",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "TelemetryQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "s3:PutObject",
+                  "Resource": {
+                    "Fn::Sub": "${ErrorArchive.Arn}/rule-errors/*"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "QueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "TelemetryQueue"
+          },
+          {
+            "Ref": "DeadLetterQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Action": "sqs:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "TelemetryQueue",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "DeadLetterQueue",
+                    "Arn"
+                  ]
+                }
+              ],
+              "Principal": "*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "TelemetryQueue",
+                  "Arn"
+                ]
+              },
+              "Principal": "*",
+              "Condition": {
+                "ArnNotEquals": {
+                  "aws:PrincipalArn": {
+                    "Fn::GetAtt": [
+                      "IotRuleRole",
+                      "Arn"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "GatewayPublishPolicy": {
+      "Type": "AWS::IoT::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "${DeploymentPrefix}-gateway-publish"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "iot:Connect",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition"
+                    },
+                    ":iot:",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId"
+                    },
+                    ":client/${iot:Connection.Thing.ThingName}"
+                  ]
+                ]
+              },
+              "Condition": {
+                "Bool": {
+                  "iot:Connection.Thing.IsAttached": "true"
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Action": "iot:Publish",
+              "Resource": {
+                "Fn::Join": [
+                  "",
+                  [
+                    "arn:",
+                    {
+                      "Ref": "AWS::Partition"
+                    },
+                    ":iot:",
+                    {
+                      "Ref": "AWS::Region"
+                    },
+                    ":",
+                    {
+                      "Ref": "AWS::AccountId"
+                    },
+                    ":topic/solar/v2/gateways/${iot:Connection.Thing.ThingName}/telemetry"
+                  ]
+                ]
+              },
+              "Condition": {
+                "Bool": {
+                  "iot:Connection.Thing.IsAttached": "true"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "TelemetryRule": {
+      "Type": "AWS::IoT::TopicRule",
+      "DependsOn": [
+        "QueuePolicy",
+        "ErrorArchivePolicy"
+      ],
+      "Properties": {
+        "RuleName": {
+          "Fn::Sub": "${DeploymentPrefix}_telemetry"
+        },
+        "TopicRulePayload": {
+          "AwsIotSqlVersion": "2016-03-23",
+          "Description": "Broker identity outside the untrusted base64 packet.",
+          "RuleDisabled": false,
+          "Sql": "SELECT 'aws_iot' AS source, principal() AS principal, clientid() AS client_id, topic() AS topic, timestamp() AS received_at_ms, encode(*, 'base64') AS payload_base64 FROM 'solar/v2/gateways/+/telemetry'",
+          "Actions": [
+            {
+              "Sqs": {
+                "QueueUrl": {
+                  "Ref": "TelemetryQueue"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "IotRuleRole",
+                    "Arn"
+                  ]
+                },
+                "UseBase64": false
+              }
+            }
+          ],
+          "ErrorAction": {
+            "S3": {
+              "BucketName": {
+                "Ref": "ErrorArchive"
+              },
+              "Key": "rule-errors/${timestamp()}-${newuuid()}.json",
+              "RoleArn": {
+                "Fn::GetAtt": [
+                  "IotRuleRole",
+                  "Arn"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "IngestionLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${DeploymentPrefix}-ingestion"
+        },
+        "RetentionInDays": 30
+      }
+    },
+    "IngestionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "ConsumeOnlyConfiguredQueueAndSecret",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "TelemetryQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "secretsmanager:GetSecretValue",
+                  "Resource": {
+                    "Ref": "IngestDatabaseSecretArn"
+                  }
+                },
+                {
+                  "Fn::If": [
+                    "HasSecretKmsKey",
+                    {
+                      "Effect": "Allow",
+                      "Action": "kms:Decrypt",
+                      "Resource": {
+                        "Ref": "SecretKmsKeyArn"
+                      },
+                      "Condition": {
+                        "StringEquals": {
+                          "kms:ViaService": {
+                            "Fn::Sub": "secretsmanager.${AWS::Region}.${AWS::URLSuffix}"
+                          },
+                          "kms:EncryptionContext:SecretARN": {
+                            "Ref": "IngestDatabaseSecretArn"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "Ref": "AWS::NoValue"
+                    }
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "IngestionLogs",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ec2:CreateNetworkInterface",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeSubnets",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:AssignPrivateIpAddresses",
+                    "ec2:UnassignPrivateIpAddresses"
+                  ],
+                  "Resource": "*",
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:RequestedRegion": {
+                        "Ref": "AWS::Region"
+                      }
+                    }
+                  }
+                },
+                {
+                  "Effect": "Deny",
+                  "Action": [
+                    "ec2:CreateNetworkInterface",
+                    "ec2:DescribeNetworkInterfaces",
+                    "ec2:DescribeSubnets",
+                    "ec2:DeleteNetworkInterface",
+                    "ec2:AssignPrivateIpAddresses",
+                    "ec2:UnassignPrivateIpAddresses"
+                  ],
+                  "Resource": "*",
+                  "Condition": {
+                    "ArnEquals": {
+                      "lambda:SourceFunctionArn": {
+                        "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${DeploymentPrefix}-ingestion"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "IngestionFunction": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": "IngestionLogs",
+      "Properties": {
+        "FunctionName": {
+          "Fn::Sub": "${DeploymentPrefix}-ingestion"
+        },
+        "Runtime": "nodejs24.x",
+        "Handler": "handler.handler",
+        "Architectures": [
+          "x86_64"
+        ],
+        "MemorySize": 256,
+        "Timeout": 30,
+        "ReservedConcurrentExecutions": 2,
+        "Role": {
+          "Fn::GetAtt": [
+            "IngestionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "CodeBucket"
+          },
+          "S3Key": {
+            "Ref": "CodeKey"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "INGEST_DATABASE_SECRET_ARN": {
+              "Ref": "IngestDatabaseSecretArn"
+            },
+            "INGEST_QUEUE_ARN": {
+              "Fn::GetAtt": [
+                "TelemetryQueue",
+                "Arn"
+              ]
+            }
+          }
+        },
+        "VpcConfig": {
+          "SubnetIds": {
+            "Ref": "VpcSubnetIds"
+          },
+          "SecurityGroupIds": {
+            "Ref": "VpcSecurityGroupIds"
+          }
+        }
+      }
+    },
+    "TelemetryConsumer": {
+      "Type": "AWS::Lambda::EventSourceMapping",
+      "Properties": {
+        "EventSourceArn": {
+          "Fn::GetAtt": [
+            "TelemetryQueue",
+            "Arn"
+          ]
+        },
+        "FunctionName": {
+          "Ref": "IngestionFunction"
+        },
+        "Enabled": true,
+        "BatchSize": 10,
+        "MaximumBatchingWindowInSeconds": 1,
+        "FunctionResponseTypes": [
+          "ReportBatchItemFailures"
+        ],
+        "ScalingConfig": {
+          "MaximumConcurrency": 2
+        }
+      }
+    },
+    "RetryMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "IngestionLogs"
+        },
+        "FilterPattern": "{ $.component = \"ingestion\" && $.retries > 0 }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": {
+              "Fn::Sub": "${DeploymentPrefix}/Telemetry"
+            },
+            "MetricName": "RetryRecords",
+            "MetricValue": "$.retries",
+            "DefaultValue": 0
+          }
+        ]
+      }
+    },
+    "RetryAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Retries need review; no notification destination is configured.",
+        "Namespace": {
+          "Fn::Sub": "${DeploymentPrefix}/Telemetry"
+        },
+        "MetricName": "RetryRecords",
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 10,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "DeadLetterAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Inspect and resolve DLQ records before deliberate replay.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "DeadLetterQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "QueueAgeAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Telemetry backlog exceeds five minutes.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateAgeOfOldestMessage",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "TelemetryQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "Threshold": 300,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    }
+  },
+  "Outputs": {
+    "TelemetryQueueArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "TelemetryQueue",
+          "Arn"
+        ]
+      }
+    },
+    "TelemetryQueueUrl": {
+      "Value": {
+        "Ref": "TelemetryQueue"
+      }
+    },
+    "DeadLetterQueueUrl": {
+      "Value": {
+        "Ref": "DeadLetterQueue"
+      }
+    },
+    "GatewayPolicyName": {
+      "Value": {
+        "Ref": "GatewayPublishPolicy"
+      }
+    },
+    "IngestionFunctionArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "IngestionFunction",
+          "Arn"
+        ]
+      }
+    },
+    "RuleErrorArchiveBucket": {
+      "Value": {
+        "Ref": "ErrorArchive"
+      }
+    }
+  }
+}

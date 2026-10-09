@@ -1,0 +1,76 @@
+{
+  "name": "monitoreo-solar",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "build:vercel": "node scripts/check-vercel-demo.mjs && npm run build",
+    "start": "next start",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "test": "node --conditions=react-server --import tsx --test tests/*.test.ts tests/*.test.mjs",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test:vercel:demo": "node scripts/test-vercel-demo.mjs",
+    "test:integration": "node scripts/test-integration.mjs",
+    "test:http": "node scripts/test-http.mjs",
+    "test:telemetry:http": "node --conditions=react-server --import tsx scripts/test-telemetry-http.ts",
+    "test:h67:http": "node --conditions=react-server --import tsx scripts/test-h67-http.ts",
+    "monitor": "node --conditions=react-server --import tsx scripts/monitor.ts",
+    "reports": "node --conditions=react-server --import tsx scripts/report-worker.ts",
+    "benchmark": "node --conditions=react-server --import tsx scripts/benchmark.ts",
+    "backup": "node scripts/backup.mjs",
+    "restore:rehearsal": "node scripts/restore-rehearsal.mjs",
+    "simulate": "node --conditions=react-server --import tsx scripts/simulate.ts",
+    "gateway": "node --conditions=react-server --import tsx scripts/gateway.ts",
+    "build:ingestion": "node scripts/build-ingestion.mjs",
+    "build:workers": "node scripts/build-workers.mjs",
+    "preflight": "node --conditions=react-server --import tsx scripts/preflight.ts",
+    "prepare:device": "node --import tsx scripts/prepare-device.ts",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:migrate": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1148.0",
+    "@aws-sdk/client-secrets-manager": "^3.1148.0",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "jose": "^6.2.12",
+    "mqtt": "^5.16.0",
+    "next": "^16.4.0",
+    "openid-client": "^6.8.8",
+    "pdf-lib": "^1.17.1",
+    "pg": "^8.23.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "dotenv": "^17.4.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.4.0",
+    "prisma": "^7.10.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "prisma": {
+      "mysql2": "3.24.5"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
+  }
+}

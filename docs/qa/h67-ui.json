@@ -1,0 +1,28 @@
+{
+  "screenshots": 14,
+  "errors": [],
+  "overflows": [],
+  "incidentAssignmentObservationClosure": true,
+  "ruleCreation": true,
+  "customerScope": true,
+  "confirmation": true,
+  "browserPdfDownload": true,
+  "scope": "local_fixture",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 1050
+    },
+    {
+      "width": 390,
+      "height": 844
+    }
+  ],
+  "keyboardTableScroll": true,
+  "namedFocusableRegions": true,
+  "visibleMobileHints": true,
+  "incidentActiveNavigation": true,
+  "independentReviewDisposition": "ship",
+  "materialFindings": 2,
+  "resolvedFindings": 2
+}

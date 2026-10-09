@@ -1,0 +1,139 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Private reports bucket only; attach reviewed existing application and worker roles. No deployment performed.",
+  "Parameters": {
+    "WebRuntimeRoleArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:[a-z-]+:iam::[0-9]{12}:role/.+"
+    },
+    "ReportWorkerRoleArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:[a-z-]+:iam::[0-9]{12}:role/.+"
+    }
+  },
+  "Resources": {
+    "ReportsBucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      }
+    },
+    "ReportsPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "ReportsBucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ReportsBucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${ReportsBucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:PutObject",
+              "Resource": {
+                "Fn::Sub": "${ReportsBucket.Arn}/reports/*"
+              },
+              "Condition": {
+                "StringNotEquals": {
+                  "s3:x-amz-server-side-encryption": "AES256"
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "WebRuntimeRoleArn"
+                }
+              },
+              "Action": "s3:GetObject",
+              "Resource": {
+                "Fn::Sub": "${ReportsBucket.Arn}/reports/*"
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "ReportWorkerRoleArn"
+                }
+              },
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject"
+              ],
+              "Resource": {
+                "Fn::Sub": "${ReportsBucket.Arn}/reports/*"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "ReportBucketName": {
+      "Value": {
+        "Ref": "ReportsBucket"
+      }
+    },
+    "ReportBucketRegion": {
+      "Value": {
+        "Ref": "AWS::Region"
+      }
+    },
+    "ReportBucketAccountId": {
+      "Value": {
+        "Ref": "AWS::AccountId"
+      }
+    }
+  }
+}

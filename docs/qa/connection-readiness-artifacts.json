@@ -1,0 +1,62 @@
+{
+  "checkedAt": "2026-10-09T17:26:36.512Z",
+  "scope": "local-artifacts-only",
+  "awsDeployed": false,
+  "hardwareConnected": false,
+  "workers": {
+    "runtime": "node24",
+    "nodeVersion": "24.19.0",
+    "lockfileSha256": "f2b6313b905f2e0730a0da5966954907c64eb59bf066ec5b84af0d6f038574fe",
+    "artifacts": [
+      {
+        "file": "monitor.mjs",
+        "entry": "scripts/monitor.ts",
+        "sha256": "3111a224ae2d124ff6ca6de5642ec75dea87f675fd9b941a5751fb75d721fb30",
+        "size": 971872
+      },
+      {
+        "file": "report-worker.mjs",
+        "entry": "scripts/report-worker.ts",
+        "sha256": "741e86f5ed0d73f0a03d86862742792cb50bbccb3bce76bbb0a257177a409928",
+        "size": 3354473
+      },
+      {
+        "file": "gateway.mjs",
+        "entry": "scripts/gateway.ts",
+        "sha256": "b20876284794c10657a00297c7f3786504856f5fbb2c390810fcbf981b7e12a0",
+        "size": 1663568
+      },
+      {
+        "file": "prepare-device.mjs",
+        "entry": "scripts/prepare-device.ts",
+        "sha256": "0631954de69365e4fcb4a9c67367638e8f40097d352213bc9ebfa00c2c9c789f",
+        "size": 777370
+      }
+    ]
+  },
+  "checks": [
+    {
+      "file": "monitor.mjs",
+      "oncePassed": true
+    },
+    {
+      "file": "report-worker.mjs",
+      "oncePassed": true
+    },
+    {
+      "file": "gateway.mjs",
+      "missingConfigurationRejected": true
+    },
+    {
+      "file": "prepare-device.mjs",
+      "offlineTemplatePassed": true
+    }
+  ],
+  "lambda": {
+    "runtime": "nodejs24.x",
+    "handler": "handler.handler",
+    "sha256": "ab8b0c33ff0bd9f93ddbacfbab64b388666911e3b195b751761c595ffa55a36a",
+    "size": 2049295
+  },
+  "privatePathsExcludedFromWebTrace": true
+}

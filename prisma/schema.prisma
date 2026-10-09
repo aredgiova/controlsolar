@@ -1,0 +1,776 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  owner
+  administrator
+  technician
+  customer
+}
+
+enum MembershipStatus {
+  active
+  invited
+  disabled
+}
+
+enum DeviceKind {
+  gateway
+  meter
+}
+
+enum DeviceStatus {
+  active
+  retired
+}
+
+enum MeasurementPointKind {
+  generation
+  consumption
+  grid
+}
+
+enum ProjectTopology {
+  grid_tied_no_battery
+}
+
+enum TelemetryQuality {
+  measured
+  calculated
+  missing
+  invalid
+}
+
+enum TelemetrySource {
+  simulator
+  aws_iot
+}
+
+enum GatewayIdentityStatus {
+  active
+  revoked
+}
+
+enum AggregateQuality {
+  measured
+  estimated
+  missing
+}
+
+enum AlertRuleKind {
+  communication
+  invalid_data
+  generation
+  device_alarm
+}
+
+enum AlertStatus {
+  pending
+  active
+  resolved
+}
+
+enum AlertSeverity {
+  warning
+  critical
+}
+
+enum AlertEventKind {
+  activated
+  resolved
+}
+
+enum IncidentStatus {
+  open
+  in_progress
+  closed
+}
+
+enum IncidentEventKind {
+  created
+  assigned
+  status_changed
+  observation
+  closed
+}
+
+enum NotificationStatus {
+  pending
+  delivered
+  failed
+}
+
+enum ReportJobStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  cognitoSubject String          @unique @map("cognito_subject")
+  email          String          @unique
+  emailVerified  Boolean         @default(false) @map("email_verified")
+  name           String?
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  sessions       Session[]
+  memberships    Membership[]
+  auditEvents    AuditEvent[]
+  invitations    Invitation[]
+  reportJobs     ReportJob[]
+  downloadLeases DownloadLease[]
+
+  @@map("users")
+}
+
+model AuthFlow {
+  stateHash String   @id @map("state_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@map("auth_flows")
+}
+
+model Session {
+  id        String    @id @default(uuid()) @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+model Organization {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  schemaVersion       String                    @default("2.0") @map("schema_version")
+  name                String
+  slug                String                    @unique
+  timezone            String                    @default("America/Bogota")
+  memberships         Membership[]
+  customers           Customer[]
+  projects            Project[]
+  devices             Device[]
+  measurementPoints   MeasurementPoint[]
+  bindings            DeviceBinding[]
+  topologyVersions    TopologyVersion[]
+  siteAccess          SiteAccess[]
+  invitations         Invitation[]
+  auditEvents         AuditEvent[]
+  samples             TelemetrySample[]
+  gatewayIdentities   GatewayIdentity[]
+  latestTelemetry     TelemetryLatest[]
+  dailyAggregates     TelemetryDailyAggregate[]
+  ingestionQuarantine IngestionQuarantine[]
+  lossReports         GatewayLossReport[]
+  alertRules          AlertRule[]
+  alerts              Alert[]
+  alertEvents         AlertEvent[]
+  incidents           Incident[]
+  incidentEvents      IncidentEvent[]
+  maintenanceWindows  MaintenanceWindow[]
+  notifications       NotificationOutbox[]
+  reportJobs          ReportJob[]
+  downloadLeases      DownloadLease[]
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("organizations")
+}
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  schemaVersion  String           @default("2.0") @map("schema_version")
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  role           MembershipRole
+  status         MembershipStatus @default(invited)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  user           User             @relation(fields: [userId], references: [id])
+  siteAccess     SiteAccess[]
+
+  @@unique([organizationId, userId])
+  @@unique([organizationId, id])
+  @@map("memberships")
+}
+
+model SiteAccess {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  projectId      String         @map("project_id") @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  role           MembershipRole
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  membership     Membership     @relation(fields: [organizationId, userId], references: [organizationId, userId])
+  project        Project        @relation(fields: [organizationId, projectId], references: [organizationId, id])
+
+  @@unique([organizationId, projectId, userId])
+  @@map("site_access")
+}
+
+model Invitation {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  tokenHash      String              @unique @map("token_hash")
+  email          String
+  role           MembershipRole
+  expiresAt      DateTime            @map("expires_at") @db.Timestamptz(3)
+  acceptedAt     DateTime?           @map("accepted_at") @db.Timestamptz(3)
+  revokedAt      DateTime?           @map("revoked_at") @db.Timestamptz(3)
+  createdBy      String              @map("created_by") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  creator        User                @relation(fields: [createdBy], references: [id])
+  projects       InvitationProject[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, email])
+  @@map("invitations")
+}
+
+model InvitationProject {
+  organizationId String     @map("organization_id") @db.Uuid
+  invitationId   String     @map("invitation_id") @db.Uuid
+  projectId      String     @map("project_id") @db.Uuid
+  invitation     Invitation @relation(fields: [organizationId, invitationId], references: [organizationId, id], onDelete: Cascade)
+  project        Project    @relation(fields: [organizationId, projectId], references: [organizationId, id])
+
+  @@id([organizationId, invitationId, projectId])
+  @@map("invitation_projects")
+}
+
+model AuditEvent {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  actorId        String       @map("actor_id") @db.Uuid
+  action         String
+  entityType     String       @map("entity_type")
+  entityId       String       @map("entity_id")
+  detail         Json         @default("{}")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  actor          User         @relation(fields: [actorId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@map("audit_events")
+}
+
+model Customer {
+  id             String       @id @default(uuid()) @db.Uuid
+  schemaVersion  String       @default("2.0") @map("schema_version")
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String
+  email          String?
+  phone          String?
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  projects       Project[]
+
+  @@unique([organizationId, id])
+  @@map("customers")
+}
+
+model Project {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  schemaVersion      String                    @default("2.0") @map("schema_version")
+  organizationId     String                    @map("organization_id") @db.Uuid
+  customerId         String                    @map("customer_id") @db.Uuid
+  name               String
+  location           String
+  latitude           Decimal?                  @db.Decimal(9, 6)
+  longitude          Decimal?                  @db.Decimal(10, 6)
+  capacityKwp        Decimal                   @map("capacity_kwp") @db.Decimal(12, 3)
+  timezone           String                    @default("America/Bogota")
+  topology           ProjectTopology           @default(grid_tied_no_battery)
+  commissionedAt     DateTime?                 @map("commissioned_at") @db.Timestamptz(3)
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization       Organization              @relation(fields: [organizationId], references: [id])
+  customer           Customer                  @relation(fields: [organizationId, customerId], references: [organizationId, id])
+  measurementPoints  MeasurementPoint[]
+  bindings           DeviceBinding[]
+  topologyVersions   TopologyVersion[]
+  siteAccess         SiteAccess[]
+  invitationProjects InvitationProject[]
+  latestTelemetry    TelemetryLatest[]
+  dailyAggregates    TelemetryDailyAggregate[]
+  alertRules         AlertRule[]
+  alerts             Alert[]
+  alertEvents        AlertEvent[]
+  incidents          Incident[]
+  incidentEvents     IncidentEvent[]
+  maintenanceWindows MaintenanceWindow[]
+  notifications      NotificationOutbox[]
+  reportJobs         ReportJob[]
+  downloadLeases     DownloadLease[]
+
+  @@unique([organizationId, id])
+  @@map("projects")
+}
+
+model Device {
+  id                String            @id @default(uuid()) @db.Uuid
+  schemaVersion     String            @default("2.0") @map("schema_version")
+  organizationId    String            @map("organization_id") @db.Uuid
+  serial            String
+  name              String
+  kind              DeviceKind
+  status            DeviceStatus      @default(active)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization      Organization      @relation(fields: [organizationId], references: [id])
+  bindings          DeviceBinding[]
+  gatewayIdentities GatewayIdentity[]
+  gatewayMeters     GatewayMeter[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, serial])
+  @@map("devices")
+}
+
+model MeasurementPoint {
+  id              String                    @id @default(uuid()) @db.Uuid
+  schemaVersion   String                    @default("2.0") @map("schema_version")
+  organizationId  String                    @map("organization_id") @db.Uuid
+  projectId       String                    @map("project_id") @db.Uuid
+  name            String
+  kind            MeasurementPointKind
+  signConvention  String                    @map("sign_convention")
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization    Organization              @relation(fields: [organizationId], references: [id])
+  project         Project                   @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  bindings        DeviceBinding[]
+  latestTelemetry TelemetryLatest?
+  dailyAggregates TelemetryDailyAggregate[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, projectId, id])
+  @@map("measurement_points")
+}
+
+model DeviceBinding {
+  id                   String            @id @default(uuid()) @db.Uuid
+  organizationId       String            @map("organization_id") @db.Uuid
+  projectId            String            @map("project_id") @db.Uuid
+  deviceId             String            @map("device_id") @db.Uuid
+  measurementPointId   String            @map("measurement_point_id") @db.Uuid
+  configurationVersion Int               @default(1) @map("configuration_version")
+  validFrom            DateTime          @map("valid_from") @db.Timestamptz(3)
+  validTo              DateTime?         @map("valid_to") @db.Timestamptz(3)
+  configuration        Json              @default("{}")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization         Organization      @relation(fields: [organizationId], references: [id])
+  project              Project           @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  device               Device            @relation(fields: [organizationId, deviceId], references: [organizationId, id])
+  measurementPoint     MeasurementPoint  @relation(fields: [organizationId, projectId, measurementPointId], references: [organizationId, projectId, id])
+  samples              TelemetrySample[]
+
+  @@unique([organizationId, measurementPointId, configurationVersion])
+  @@unique([organizationId, id, measurementPointId, deviceId, configurationVersion], map: "device_bindings_sample_identity_key")
+  @@index([organizationId, projectId, validFrom])
+  @@map("device_bindings")
+}
+
+model TopologyVersion {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  projectId      String       @map("project_id") @db.Uuid
+  version        Int
+  validFrom      DateTime     @map("valid_from") @db.Timestamptz(3)
+  validTo        DateTime?    @map("valid_to") @db.Timestamptz(3)
+  configuration  Json
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  project        Project      @relation(fields: [organizationId, projectId], references: [organizationId, id])
+
+  @@unique([organizationId, projectId, version])
+  @@map("topology_versions")
+}
+
+model TelemetrySample {
+  eventId              String           @id @map("event_id") @db.Uuid
+  ingestionSequence    BigInt           @unique @default(autoincrement()) @map("ingestion_sequence")
+  ingestedAt           DateTime         @default(dbgenerated("clock_timestamp()")) @map("ingested_at") @db.Timestamptz(3)
+  schemaVersion        String           @default("1.0") @map("schema_version")
+  organizationId       String           @map("organization_id") @db.Uuid
+  bindingId            String           @map("binding_id") @db.Uuid
+  deviceId             String           @map("device_id") @db.Uuid
+  measurementPointId   String           @map("measurement_point_id") @db.Uuid
+  measuredAt           DateTime         @map("measured_at") @db.Timestamptz(3)
+  receivedAt           DateTime         @map("received_at") @db.Timestamptz(3)
+  configurationVersion Int              @map("configuration_version")
+  activePower          Decimal?         @map("active_power") @db.Decimal(16, 6)
+  importEnergy         Decimal?         @map("import_energy") @db.Decimal(20, 6)
+  exportEnergy         Decimal?         @map("export_energy") @db.Decimal(20, 6)
+  powerUnit            String           @default("kW") @map("power_unit")
+  energyUnit           String           @default("kWh") @map("energy_unit")
+  quality              TelemetryQuality
+  source               TelemetrySource  @default(simulator)
+  gatewayIdentityId    String?          @map("gateway_identity_id") @db.Uuid
+  payloadHash          String?          @map("payload_hash") @db.VarChar(64)
+  payloadJson          Json             @default("{}") @map("payload_json")
+  phases               Json             @default("[]")
+  alarms               Json?
+  organization         Organization     @relation(fields: [organizationId], references: [id])
+  gatewayIdentity      GatewayIdentity? @relation(fields: [organizationId, gatewayIdentityId], references: [organizationId, id])
+  latest               TelemetryLatest?
+  binding              DeviceBinding    @relation(fields: [organizationId, bindingId, measurementPointId, deviceId, configurationVersion], references: [organizationId, id, measurementPointId, deviceId, configurationVersion], map: "telemetry_samples_binding_fkey")
+
+  @@unique([organizationId, eventId])
+  @@unique([organizationId, bindingId, measuredAt])
+  @@index([organizationId, measurementPointId, measuredAt])
+  @@map("telemetry_samples")
+}
+
+model GatewayIdentity {
+  id              String                @id @default(uuid()) @db.Uuid
+  organizationId  String                @map("organization_id") @db.Uuid
+  gatewayDeviceId String                @map("gateway_device_id") @db.Uuid
+  name            String
+  source          TelemetrySource
+  clientId        String                @map("client_id")
+  principalId     String                @map("principal_id")
+  status          GatewayIdentityStatus @default(active)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  revokedAt       DateTime?             @map("revoked_at") @db.Timestamptz(3)
+  organization    Organization          @relation(fields: [organizationId], references: [id])
+  gatewayDevice   Device                @relation(fields: [organizationId, gatewayDeviceId], references: [organizationId, id])
+  meters          GatewayMeter[]
+  samples         TelemetrySample[]
+  quarantine      IngestionQuarantine[]
+  lossReports     GatewayLossReport[]
+
+  @@unique([organizationId, id])
+  @@unique([source, clientId, principalId])
+  @@map("gateway_identities")
+}
+
+model GatewayMeter {
+  organizationId    String          @map("organization_id") @db.Uuid
+  gatewayIdentityId String          @map("gateway_identity_id") @db.Uuid
+  meterDeviceId     String          @map("meter_device_id") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  gatewayIdentity   GatewayIdentity @relation(fields: [organizationId, gatewayIdentityId], references: [organizationId, id])
+  meterDevice       Device          @relation(fields: [organizationId, meterDeviceId], references: [organizationId, id])
+
+  @@id([organizationId, gatewayIdentityId, meterDeviceId])
+  @@map("gateway_meters")
+}
+
+model TelemetryLatest {
+  organizationId     String           @map("organization_id") @db.Uuid
+  projectId          String           @map("project_id") @db.Uuid
+  measurementPointId String           @unique @map("measurement_point_id") @db.Uuid
+  eventId            String           @unique @map("event_id") @db.Uuid
+  measuredAt         DateTime         @map("measured_at") @db.Timestamptz(3)
+  receivedAt         DateTime         @map("received_at") @db.Timestamptz(3)
+  organization       Organization     @relation(fields: [organizationId], references: [id])
+  project            Project          @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  point              MeasurementPoint @relation(fields: [organizationId, projectId, measurementPointId], references: [organizationId, projectId, id])
+  sample             TelemetrySample  @relation(fields: [organizationId, eventId], references: [organizationId, eventId])
+
+  @@id([organizationId, measurementPointId])
+  @@unique([organizationId, projectId, measurementPointId])
+  @@unique([organizationId, eventId])
+  @@map("telemetry_latest")
+}
+
+model TelemetryDailyAggregate {
+  organizationId        String           @map("organization_id") @db.Uuid
+  projectId             String           @map("project_id") @db.Uuid
+  measurementPointId    String           @map("measurement_point_id") @db.Uuid
+  localDate             DateTime         @map("local_date") @db.Date
+  importEnergyKwh       Decimal?         @map("import_energy_kwh") @db.Decimal(20, 6)
+  exportEnergyKwh       Decimal?         @map("export_energy_kwh") @db.Decimal(20, 6)
+  integratedPositiveKwh Decimal?         @map("integrated_positive_kwh") @db.Decimal(20, 6)
+  integratedNegativeKwh Decimal?         @map("integrated_negative_kwh") @db.Decimal(20, 6)
+  sampleCount           Int              @map("sample_count")
+  gapCount              Int              @map("gap_count")
+  resetCount            Int              @map("reset_count")
+  quality               AggregateQuality
+  detailJson            Json             @map("detail_json")
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization          Organization     @relation(fields: [organizationId], references: [id])
+  project               Project          @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  point                 MeasurementPoint @relation(fields: [organizationId, projectId, measurementPointId], references: [organizationId, projectId, id])
+
+  @@id([organizationId, measurementPointId, localDate])
+  @@index([organizationId, projectId, localDate])
+  @@map("telemetry_daily_aggregates")
+}
+
+model IngestionQuarantine {
+  id                String           @id @default(uuid()) @db.Uuid
+  organizationId    String?          @map("organization_id") @db.Uuid
+  gatewayIdentityId String?          @map("gateway_identity_id") @db.Uuid
+  eventId           String?          @map("event_id") @db.Uuid
+  messageId         String           @map("message_id")
+  bodyHash          String           @map("body_hash") @db.VarChar(64)
+  reason            String
+  rawBody           String           @map("raw_body")
+  receiptContext    Json             @map("receipt_context")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization      Organization?    @relation(fields: [organizationId], references: [id])
+  gatewayIdentity   GatewayIdentity? @relation(fields: [organizationId, gatewayIdentityId], references: [organizationId, id])
+
+  @@unique([messageId, bodyHash, reason])
+  @@index([organizationId, createdAt])
+  @@map("ingestion_quarantine")
+}
+
+model GatewayLossReport {
+  reportId          String          @id @map("report_id") @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  gatewayIdentityId String          @map("gateway_identity_id") @db.Uuid
+  from              DateTime        @map("lost_from") @db.Timestamptz(3)
+  to                DateTime        @map("lost_to") @db.Timestamptz(3)
+  dropped           Int
+  reason            String
+  recordedAt        DateTime        @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  organization      Organization    @relation(fields: [organizationId], references: [id])
+  gatewayIdentity   GatewayIdentity @relation(fields: [organizationId, gatewayIdentityId], references: [organizationId, id])
+
+  @@index([organizationId, recordedAt])
+  @@map("gateway_loss_reports")
+}
+
+model AlertRule {
+  id                 String        @id @default(uuid()) @db.Uuid
+  organizationId     String        @map("organization_id") @db.Uuid
+  projectId          String        @map("project_id") @db.Uuid
+  kind               AlertRuleKind
+  name               String
+  enabled            Boolean       @default(true)
+  persistenceSeconds Int           @map("persistence_seconds")
+  recoverySeconds    Int           @map("recovery_seconds")
+  configuration      Json          @default("{}")
+  lastEvaluatedAt    DateTime?     @map("last_evaluated_at") @db.Timestamptz(3)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization       Organization  @relation(fields: [organizationId], references: [id])
+  project            Project       @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  alerts             Alert[]
+
+  @@unique([organizationId, projectId, id])
+  @@index([enabled, lastEvaluatedAt])
+  @@map("alert_rules")
+}
+
+model Alert {
+  id              String               @id @default(uuid()) @db.Uuid
+  organizationId  String               @map("organization_id") @db.Uuid
+  projectId       String               @map("project_id") @db.Uuid
+  ruleId          String               @map("rule_id") @db.Uuid
+  dedupKey        String               @map("dedup_key")
+  status          AlertStatus
+  episodeId       String               @map("episode_id") @db.Uuid
+  candidateSince  DateTime?            @map("candidate_since") @db.Timestamptz(3)
+  recoverySince   DateTime?            @map("recovery_since") @db.Timestamptz(3)
+  activatedAt     DateTime?            @map("activated_at") @db.Timestamptz(3)
+  resolvedAt      DateTime?            @map("resolved_at") @db.Timestamptz(3)
+  lastEvaluatedAt DateTime             @map("last_evaluated_at") @db.Timestamptz(3)
+  title           String
+  message         String
+  severity        AlertSeverity
+  detail          Json                 @default("{}")
+  organization    Organization         @relation(fields: [organizationId], references: [id])
+  project         Project              @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  rule            AlertRule            @relation(fields: [organizationId, projectId, ruleId], references: [organizationId, projectId, id])
+  events          AlertEvent[]
+  incidents       Incident[]
+  notifications   NotificationOutbox[]
+
+  @@unique([organizationId, ruleId, dedupKey])
+  @@unique([organizationId, projectId, id])
+  @@index([organizationId, projectId, status])
+  @@map("alerts")
+}
+
+model AlertEvent {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  projectId      String         @map("project_id") @db.Uuid
+  alertId        String         @map("alert_id") @db.Uuid
+  episodeId      String         @map("episode_id") @db.Uuid
+  kind           AlertEventKind
+  detail         Json           @default("{}")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization   @relation(fields: [organizationId], references: [id])
+  project        Project        @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  alert          Alert          @relation(fields: [organizationId, projectId, alertId], references: [organizationId, projectId, id])
+
+  @@unique([alertId, episodeId, kind])
+  @@index([organizationId, projectId, createdAt])
+  @@map("alert_events")
+}
+
+model Incident {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  projectId      String          @map("project_id") @db.Uuid
+  alertId        String?         @map("alert_id") @db.Uuid
+  alertEpisodeId String?         @map("alert_episode_id") @db.Uuid
+  title          String
+  description    String
+  status         IncidentStatus  @default(open)
+  assigneeUserId String?         @map("assignee_user_id") @db.Uuid
+  createdById    String?         @map("created_by_id") @db.Uuid
+  resolution     String?
+  closedAt       DateTime?       @map("closed_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  project        Project         @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  alert          Alert?          @relation(fields: [organizationId, projectId, alertId], references: [organizationId, projectId, id])
+  events         IncidentEvent[]
+
+  @@unique([alertId, alertEpisodeId])
+  @@unique([organizationId, projectId, id])
+  @@index([organizationId, projectId, status])
+  @@map("incidents")
+}
+
+model IncidentEvent {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  projectId      String            @map("project_id") @db.Uuid
+  incidentId     String            @map("incident_id") @db.Uuid
+  actorId        String?           @map("actor_id") @db.Uuid
+  kind           IncidentEventKind
+  note           String?
+  detail         Json              @default("{}")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  project        Project           @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  incident       Incident          @relation(fields: [organizationId, projectId, incidentId], references: [organizationId, projectId, id])
+
+  @@index([organizationId, projectId, createdAt])
+  @@map("incident_events")
+}
+
+model MaintenanceWindow {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  projectId      String       @map("project_id") @db.Uuid
+  from           DateTime     @map("starts_at") @db.Timestamptz(3)
+  to             DateTime     @map("ends_at") @db.Timestamptz(3)
+  reason         String
+  createdById    String       @map("created_by_id") @db.Uuid
+  cancelledAt    DateTime?    @map("cancelled_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  project        Project      @relation(fields: [organizationId, projectId], references: [organizationId, id])
+
+  @@index([organizationId, projectId, from, to])
+  @@map("maintenance_windows")
+}
+
+model NotificationOutbox {
+  id             String             @id @default(uuid()) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  projectId      String             @map("project_id") @db.Uuid
+  alertId        String             @map("alert_id") @db.Uuid
+  episodeId      String             @map("episode_id") @db.Uuid
+  eventKind      AlertEventKind     @map("event_kind")
+  eventKey       String             @unique @map("event_key")
+  payload        Json
+  status         NotificationStatus @default(pending)
+  attempts       Int                @default(0)
+  nextAttemptAt  DateTime           @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  lockedUntil    DateTime?          @map("locked_until") @db.Timestamptz(3)
+  leaseTokenHash String?            @map("lease_token_hash") @db.VarChar(64)
+  workerId       String?            @map("worker_id")
+  lastError      String?            @map("last_error")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  deliveredAt    DateTime?          @map("delivered_at") @db.Timestamptz(3)
+  organization   Organization       @relation(fields: [organizationId], references: [id])
+  project        Project            @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  alert          Alert              @relation(fields: [organizationId, projectId, alertId], references: [organizationId, projectId, id])
+
+  @@unique([alertId, episodeId, eventKind])
+  @@index([status, nextAttemptAt])
+  @@map("notification_outbox")
+}
+
+model ReportJob {
+  id               String          @id @default(uuid()) @db.Uuid
+  organizationId   String          @map("organization_id") @db.Uuid
+  projectId        String          @map("project_id") @db.Uuid
+  requestedBy      String          @map("requested_by") @db.Uuid
+  idempotencyKey   String          @map("idempotency_key") @db.Uuid
+  snapshotSequence BigInt          @default(0) @map("snapshot_sequence")
+  timezone         String
+  startDate        DateTime        @map("start_date") @db.Date
+  endDate          DateTime        @map("end_date") @db.Date
+  from             DateTime        @map("period_from") @db.Timestamptz(3)
+  to               DateTime        @map("period_to") @db.Timestamptz(3)
+  status           ReportJobStatus @default(queued)
+  attempts         Int             @default(0)
+  nextAttemptAt    DateTime        @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  leaseTokenHash   String?         @map("lease_token_hash") @db.VarChar(64)
+  leaseUntil       DateTime?       @map("lease_until") @db.Timestamptz(3)
+  workerId         String?         @map("worker_id")
+  artifactKey      String?         @map("artifact_key")
+  sha256           String?         @db.VarChar(64)
+  byteLength       Int?            @map("byte_length")
+  snapshotJson     Json?           @map("snapshot_json")
+  errorCode        String?         @map("error_code")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  completedAt      DateTime?       @map("completed_at") @db.Timestamptz(3)
+  organization     Organization    @relation(fields: [organizationId], references: [id])
+  project          Project         @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  requester        User            @relation(fields: [requestedBy], references: [id])
+  downloadLeases   DownloadLease[]
+
+  @@unique([organizationId, requestedBy, idempotencyKey])
+  @@unique([organizationId, projectId, id])
+  @@index([status, nextAttemptAt])
+  @@map("report_jobs")
+}
+
+model DownloadLease {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  projectId      String       @map("project_id") @db.Uuid
+  reportJobId    String       @map("report_job_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  tokenHash      String       @unique @map("token_hash") @db.VarChar(64)
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(3)
+  consumedAt     DateTime?    @map("consumed_at") @db.Timestamptz(3)
+  revokedAt      DateTime?    @map("revoked_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  project        Project      @relation(fields: [organizationId, projectId], references: [organizationId, id])
+  reportJob      ReportJob    @relation(fields: [organizationId, projectId, reportJobId], references: [organizationId, projectId, id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@index([expiresAt])
+  @@map("download_leases")
+}
+
+model RequestRateLimit {
+  scope       String
+  keyHash     String   @map("key_hash") @db.VarChar(64)
+  windowStart DateTime @map("window_start") @db.Timestamptz(3)
+  count       Int
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@id([scope, keyHash, windowStart])
+  @@index([expiresAt])
+  @@map("request_rate_limits")
+}

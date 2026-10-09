@@ -1,0 +1,52 @@
+{
+  "checkedAt": "2026-10-09T17:21:21.732Z",
+  "scope": "local-configuration-and-read-only-database",
+  "providerLoginVerified": false,
+  "hardwareVerified": false,
+  "checks": [
+    {
+      "service": "web",
+      "passed": true,
+      "databaseChecks": [
+        {
+          "name": "database:DATABASE_URL",
+          "passed": true
+        },
+        {
+          "name": "database:AUTH_DATABASE_URL",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "service": "monitor",
+      "passed": true,
+      "databaseChecks": [
+        {
+          "name": "database:WORKER_DATABASE_URL",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "service": "reports",
+      "passed": true,
+      "databaseChecks": [
+        {
+          "name": "database:WORKER_DATABASE_URL",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "service": "web",
+      "input": "infra/environments/staging.env.example",
+      "placeholdersRejected": true
+    },
+    {
+      "service": "web",
+      "input": "infra/environments/production.env.example",
+      "placeholdersRejected": true
+    }
+  ]
+}

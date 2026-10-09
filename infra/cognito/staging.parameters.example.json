@@ -1,0 +1,11 @@
+[
+  { "ParameterKey": "Environment", "ParameterValue": "staging" },
+  { "ParameterKey": "DeploymentPrefix", "ParameterValue": "replace-solar-account" },
+  { "ParameterKey": "AppBaseUrl", "ParameterValue": "https://solar-staging.example.invalid" },
+  { "ParameterKey": "GenerateClientSecret", "ParameterValue": "true" },
+  { "ParameterKey": "MfaMode", "ParameterValue": "ON" },
+  { "ParameterKey": "EnableLocalhostCallbacks", "ParameterValue": "false" },
+  { "ParameterKey": "LocalTestPort", "ParameterValue": "3100" },
+  { "ParameterKey": "SesIdentityArn", "ParameterValue": "" },
+  { "ParameterKey": "EmailFromAddress", "ParameterValue": "" }
+]

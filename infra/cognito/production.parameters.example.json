@@ -1,0 +1,11 @@
+[
+  { "ParameterKey": "Environment", "ParameterValue": "production" },
+  { "ParameterKey": "DeploymentPrefix", "ParameterValue": "replace-solar-account" },
+  { "ParameterKey": "AppBaseUrl", "ParameterValue": "https://solar.example.invalid" },
+  { "ParameterKey": "GenerateClientSecret", "ParameterValue": "true" },
+  { "ParameterKey": "MfaMode", "ParameterValue": "ON" },
+  { "ParameterKey": "EnableLocalhostCallbacks", "ParameterValue": "false" },
+  { "ParameterKey": "LocalTestPort", "ParameterValue": "3100" },
+  { "ParameterKey": "SesIdentityArn", "ParameterValue": "arn:aws:ses:us-east-1:000000000000:identity/example.invalid" },
+  { "ParameterKey": "EmailFromAddress", "ParameterValue": "acceso@example.invalid" }
+]

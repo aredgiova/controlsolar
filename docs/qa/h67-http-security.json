@@ -1,0 +1,10 @@
+{
+  "scope": "local_fixture",
+  "bodyLimit32KiB": true,
+  "oversizedStatus": 413,
+  "writeRateLimitStatus": 429,
+  "retryAfterPresent": true,
+  "readBudgetSeparate": true,
+  "headersVerified": true,
+  "rawIdentityStored": false
+}

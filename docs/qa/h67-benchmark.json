@@ -1,0 +1,287 @@
+{
+  "generatedAt": "2026-10-09T15:18:54.505Z",
+  "scope": "local_postgresql_simulated",
+  "externalServicesUsed": false,
+  "environment": {
+    "node": "v24.19.0",
+    "postgres": "18.4",
+    "platform": "win32",
+    "architecture": "x64"
+  },
+  "fixture": {
+    "fictitiousInstallers": 2,
+    "projects": 5,
+    "meters": 10,
+    "gateways": 2,
+    "uniqueObservations": 600,
+    "duplicateObservations": 10
+  },
+  "measurement": {
+    "latencyUnit": "milliseconds_per_packet",
+    "throughputUnit": "observations_per_second",
+    "setupExcluded": true,
+    "coldFirstPacketIncluded": true,
+    "maximumConcurrentPackets": 2,
+    "simulatedReconnectBuffer": true,
+    "sourceTimeSpanSeconds": 3540,
+    "acceleratedHistoricalReplay": true
+  },
+  "projectProvisioning": {
+    "unit": "milliseconds",
+    "mode": "local_server_service_calls",
+    "usabilityTiming": false,
+    "excludesOrganizationUserAndGatewaySetup": true,
+    "projects": [
+      {
+        "projectNumber": 1,
+        "projectRecordMs": 26.356,
+        "configuredAndCommissionedMs": 127.268,
+        "totalServiceProvisioningMs": 153.627
+      },
+      {
+        "projectNumber": 2,
+        "projectRecordMs": 9.751,
+        "configuredAndCommissionedMs": 68.349,
+        "totalServiceProvisioningMs": 78.102
+      },
+      {
+        "projectNumber": 3,
+        "projectRecordMs": 5.571,
+        "configuredAndCommissionedMs": 58.816,
+        "totalServiceProvisioningMs": 64.389
+      },
+      {
+        "projectNumber": 4,
+        "projectRecordMs": 7.184,
+        "configuredAndCommissionedMs": 67.626,
+        "totalServiceProvisioningMs": 74.811
+      },
+      {
+        "projectNumber": 5,
+        "projectRecordMs": 5.904,
+        "configuredAndCommissionedMs": 58.924,
+        "totalServiceProvisioningMs": 64.83
+      }
+    ],
+    "totalServiceProvisioningMs": {
+      "count": 5,
+      "minimum": 64.389,
+      "p50": 74.811,
+      "p95": 153.627,
+      "p99": 153.627,
+      "maximum": 153.627
+    }
+  },
+  "ingestionDelay": {
+    "unit": "milliseconds",
+    "interpretation": "historical_simulated_replay_not_network_latency",
+    "fieldClockSynchronizationVerified": false,
+    "measurementToTrustedReceipt": {
+      "count": 600,
+      "minimum": 414052,
+      "p50": 2154147,
+      "p95": 3773774,
+      "p99": 3953651,
+      "maximum": 3953681
+    },
+    "measurementToServerIngestion": {
+      "count": 600,
+      "minimum": 414157,
+      "p50": 2154205,
+      "p95": 3773778,
+      "p99": 3953656,
+      "maximum": 3953685
+    },
+    "measurementToCommitAcknowledgement": {
+      "count": 600,
+      "minimum": 414227,
+      "p50": 2154226,
+      "p95": 3773779,
+      "p99": 3953659,
+      "maximum": 3953688
+    },
+    "receiptToCommitAcknowledgementPerAcceptedPacket": {
+      "count": 55,
+      "minimum": 4,
+      "p50": 6,
+      "p95": 87,
+      "p99": 181,
+      "maximum": 181
+    }
+  },
+  "phases": {
+    "normal": {
+      "packets": 50,
+      "observations": 100,
+      "accepted": 100,
+      "duplicate": 0,
+      "quarantined": 0,
+      "durationMs": 383.898,
+      "latencyMs": {
+        "p50": 5.536,
+        "p95": 12.627,
+        "p99": 72.733,
+        "maximum": 72.733
+      },
+      "throughputEventsPerSecond": 260.486,
+      "backlog": {
+        "initialObservations": 100,
+        "maximumObservations": 100,
+        "finalObservations": 0,
+        "checkpoints": [
+          100,
+          98,
+          96,
+          94,
+          92,
+          90,
+          88,
+          86,
+          84,
+          82,
+          80,
+          78,
+          76,
+          74,
+          72,
+          70,
+          68,
+          66,
+          64,
+          62,
+          60,
+          58,
+          56,
+          54,
+          52,
+          50,
+          48,
+          46,
+          44,
+          42,
+          40,
+          38,
+          36,
+          34,
+          32,
+          30,
+          28,
+          26,
+          24,
+          22,
+          20,
+          18,
+          16,
+          14,
+          12,
+          10,
+          8,
+          6,
+          4,
+          2,
+          0
+        ]
+      }
+    },
+    "reconnection": {
+      "packets": 5,
+      "observations": 500,
+      "accepted": 500,
+      "duplicate": 0,
+      "quarantined": 0,
+      "durationMs": 334.582,
+      "latencyMs": {
+        "p50": 87.551,
+        "p95": 181.526,
+        "p99": 181.526,
+        "maximum": 181.526
+      },
+      "throughputEventsPerSecond": 1494.403,
+      "backlog": {
+        "initialObservations": 500,
+        "maximumObservations": 500,
+        "finalObservations": 0,
+        "checkpoints": [
+          500,
+          400,
+          300,
+          200,
+          100,
+          0
+        ]
+      }
+    },
+    "duplicateReplay": {
+      "packets": 5,
+      "observations": 10,
+      "accepted": 0,
+      "duplicate": 10,
+      "quarantined": 0,
+      "durationMs": 11.379,
+      "latencyMs": {
+        "p50": 3.341,
+        "p95": 5.973,
+        "p99": 5.973,
+        "maximum": 5.973
+      },
+      "throughputEventsPerSecond": 878.835,
+      "backlog": {
+        "initialObservations": 10,
+        "maximumObservations": 10,
+        "finalObservations": 0,
+        "checkpoints": [
+          10,
+          8,
+          6,
+          4,
+          2,
+          0
+        ]
+      }
+    }
+  },
+  "continuity": {
+    "projectsVerified": 5,
+    "allPassed": true,
+    "results": [
+      {
+        "generationKwh": 1.967,
+        "consumptionKwh": 2.95,
+        "coveredSeconds": 3540,
+        "latestDidNotRegress": true
+      },
+      {
+        "generationKwh": 1.967,
+        "consumptionKwh": 2.95,
+        "coveredSeconds": 3540,
+        "latestDidNotRegress": true
+      },
+      {
+        "generationKwh": 1.967,
+        "consumptionKwh": 2.95,
+        "coveredSeconds": 3540,
+        "latestDidNotRegress": true
+      },
+      {
+        "generationKwh": 1.967,
+        "consumptionKwh": 2.95,
+        "coveredSeconds": 3540,
+        "latestDidNotRegress": true
+      },
+      {
+        "generationKwh": 1.967,
+        "consumptionKwh": 2.95,
+        "coveredSeconds": 3540,
+        "latestDidNotRegress": true
+      }
+    ]
+  },
+  "tenantIsolationVerified": true,
+  "limits": [
+    "Ensayo de 610 observaciones; percentiles con pocos paquetes, no capacidad productiva.",
+    "Backlog modelado en memoria para reconexión, no métrica real de AWS SQS.",
+    "El atraso medición-recepción/commit procede de timestamps históricos simulados y replay acelerado; no mide NTP ni red de campo.",
+    "El alta por proyecto mide llamadas locales de servicios, no tiempo de uso de interfaz ni puesta en marcha física.",
+    "No incluye red de campo, hardware, despliegue AWS, carga sostenida ni estimación de costes."
+  ]
+}

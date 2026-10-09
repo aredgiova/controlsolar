@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+coverage/
+.env*
+!.env.example
+src/generated/prisma/
+*.tsbuildinfo
+.work/
+*.log
+.DS_Store
+.vercel/
+.impeccable/
+!.env.vercel-demo.example

@@ -1,0 +1,27 @@
+{
+  "backupId": "e5044431-9fcb-4aaa-9505-ddc29e40c219",
+  "targetDatabase": "solar_h67_1791566617125_restore_test",
+  "verifiedTables": 33,
+  "forcedRlsTables": 32,
+  "restoredReportFiles": 2,
+  "durationMs": 756,
+  "restoredAt": "2026-10-09T17:23:38.699Z",
+  "sourceUnchanged": true,
+  "runtimeWithoutScopeSees": 0,
+  "customerAssignedProjects": 1,
+  "requestCountersDenied": true,
+  "restrictedRoleBoundaries": [
+    "auth",
+    "worker",
+    "ingest"
+  ],
+  "encrypted": true,
+  "backupDurationMs": 684,
+  "localSameCluster": true,
+  "offlineGuard": {
+    "inheritedPgVariablesStripped": true,
+    "verifiedTlsRequiredOutsideLoopback": true,
+    "connectionValidatedBeforeClient": true,
+    "unitTestsPassed": 4
+  }
+}

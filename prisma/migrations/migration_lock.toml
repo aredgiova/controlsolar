@@ -1,0 +1,3 @@
+# The complete baseline is for a new database. Never resolve or deploy over a populated
+# milestone-1 prototype without a reviewed data migration.
+provider = "postgresql"
